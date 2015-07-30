@@ -7,6 +7,7 @@ from __future__ import absolute_import
 # Import python libs
 import os
 import yaml
+import json
 import logging
 import textwrap
 
@@ -25,7 +26,7 @@ def _cmd(*args):
     '''
     construct salt-cloud command
     '''
-    cmd = ['salt-cloud', '--output=yaml', '--assume-yes']
+    cmd = ['salt-cloud', '--output=json', '--assume-yes']
     cmd.extend(args)
     return cmd
 
@@ -88,18 +89,23 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
 
         salt master-minion salt_cluster.create_node jmoney-master linode-centos-7 root /tmp/roster
     '''
+    passwd = _get_passwd(profile)
     args = ['--no-deploy', '--profile', profile, name]
-    info = yaml.load(__salt__['cmd.run_stdout'](_cmd(*args)))
 
-    if name in info and info[name].get('state') == 'Running':
-        passwd = _get_passwd(profile)
-        _add_to_roster(name, info[name]['public_ips'][0], user, passwd, roster)
-        return True
+    try:
+        info = json.loads(__salt__['cmd.run_stdout'](_cmd(*args)))
+    except ValueError as value_error:
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}'.format(value_error))
 
-    else:
-        error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, info)
-        log.error(error)
-        return (False, error)
+    if name in info:
+        state = info[name].get('state')
+        if state == 'Running' or state == 3:
+            _add_to_roster(name, info[name]['public_ips'][0], user, passwd, roster)
+            return True
+
+    error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, info)
+    log.error(error)
+    return (False, error)
 
 
 def destroy_node(name, roster='/etc/salt/cluster/roster'):
@@ -111,7 +117,12 @@ def destroy_node(name, roster='/etc/salt/cluster/roster'):
         salt master-minion salt_cluster.destroy_node jmoney-master
     '''
     args = ['--destroy', name]
-    info = yaml.load(__salt__['cmd.run_stdout'](_cmd(*args)))
+
+    try:
+        info = json.loads(__salt__['cmd.run_stdout'](_cmd(*args)))
+    except ValueError as value_error:
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}'.format(value_error))
+
     if isinstance(info, dict) and name in str(info):
         _rem_from_roster(name, roster)
         return True
