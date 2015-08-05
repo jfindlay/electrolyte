@@ -1,4 +1,5 @@
 simple_cluster:
+  - roster: /etc/salt/cluster/simple_cluster.roster
   - jmoney-cluster-master:
       profile: linode-centos-7
       role: master
