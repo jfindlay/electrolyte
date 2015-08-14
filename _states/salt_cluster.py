@@ -2,33 +2,31 @@
 '''
 Create and destroy clusters of VMs.
 
-.. code-block:: yaml
-
-    master-and-minion:
-      salt_cluster.present:
-        - linode-centos-7:
-            jmoney-master
-        - linode-ubuntu-15:
-            jmoney-minion
+Create two nodes:
 
 .. code-block:: yaml
 
-    master-syndic-minions:
-      salt_cluster.present:
-        - linode-centos-7:
-            jmoney-master
-            jmoney-syndic
-        - rackspace-gentoo:
-            jmoney-gentoo-minion
-        - vultr-debian-8:
-            jmoney-debian-minion
+    master:
+      salt_cluster.node_present:
+        - name: jmoney-master
+        - profile: linode-centos-7
+
+    minion:
+      salt_cluster.node_present:
+        - name: jmoney-minion
+        - profile: linode-ubuntu-15
+
+Destroy two nodes:
 
 .. code-block:: yaml
 
-    delete-cluster:
-      salt_cluster.absent:
-        - jmoney-master
-        - jmoney-minion
+    master:
+      salt_cluster.node_absent:
+        - name: jmoney-master
+
+    minion:
+      salt_cluster.node_absent:
+        - name: jmoney-minion
 '''
 
 # Import salt libs
