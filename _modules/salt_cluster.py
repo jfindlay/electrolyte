@@ -57,8 +57,8 @@ def _add_to_roster(name, host, user, passwd, roster):
           passwd: {3}'''.format(name, host, user, passwd))
     __salt__['state.single']('file.touch', roster, makedirs=True)
     __salt__['file.blockreplace'](roster,
-             '# begin {0}'.format(name),
-             '# end {0}'.format(name),
+             '##### begin {0}'.format(name),
+             '##### end {0}'.format(name),
              entry,
              append_if_not_found=True)
 
@@ -69,15 +69,15 @@ def _rem_from_roster(name, roster):
     '''
     # remove config block
     __salt__['file.blockreplace'](roster,
-                                  '# begin {0}'.format(name),
-                                  '# end {0}'.format(name))
+                                  '##### begin {0}'.format(name),
+                                  '##### end {0}'.format(name))
 
     # remove block markers
     __salt__['file.replace'](roster,
-                             r'^# begin {0}$\n'.format(name),
+                             r'^##### begin {0}$\n'.format(name),
                              '')
     __salt__['file.replace'](roster,
-                             r'^# end {0}$\n'.format(name),
+                             r'^##### end {0}$\n'.format(name),
                              '')
 
 
