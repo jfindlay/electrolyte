@@ -31,19 +31,34 @@ def _cmd(*args):
     return cmd
 
 
-def _get_passwd(profile, prof_dir='/etc/salt/cloud.profiles.d'):
+def _get_passwd(profile):
     '''
     retrieve profile password from profile config
     '''
+    conf_dir = '/etc/salt'
+    prof_dir = os.path.join(conf_dir, 'cloud.profiles.d')
+    prov_dir = os.path.join(conf_dir, 'cloud.providers.d')
+    password = ''
+    prov_file_name = ''
+
     for prof_file_name in os.listdir(prof_dir):
         with open(os.path.join(prof_dir, prof_file_name)) as prof_file:
             prof_data = yaml.load(prof_file.read())
             if profile in prof_data:
-                return prof_data[profile]['password']
+                password = prof_data[profile].get('password')
+                prov_file_name = prof_file_name
+    if not password and prov_file_name:
+        with open(os.path.join(prov_dir, prof_file_name)) as prov_file:
+            prov_data = yaml.load(prov_file.read())
+            for provider in prov_data:
+                password = prov_data[provider].get('password')
 
-    error = 'Failed to retrieve password for {0} from cloud profiles, {1}'.format(profile, prof_dir)
-    log.error(error)
-    raise CommandExecutionError(error)
+    if password:
+        return password
+    else:
+        error = 'Failed to retrieve password for {0} from cloud profiles, {1}'.format(profile, prof_dir)
+        log.error(error)
+        raise CommandExecutionError(error)
 
 
 def _add_to_roster(name, host, user, passwd, roster):
