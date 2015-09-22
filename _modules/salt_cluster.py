@@ -160,10 +160,11 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
 
     args = ['--no-deploy', '--profile', profile, name]
 
+    res = __salt__['cmd.run_stdout'](_cmd(*args))
     try:
-        info = json.loads(__salt__['cmd.run_stdout'](_cmd(*args)))
+        info = json.loads(res)
     except ValueError as value_error:
-        raise CommandExecutionError('Could not read json from salt-cloud: {0}'.format(value_error))
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res))
 
     ip_addr = _interpret_driver_info(driver, info, name)
     if ip_addr:
