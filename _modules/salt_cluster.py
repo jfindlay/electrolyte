@@ -31,54 +31,55 @@ def _cmd(*args):
     return cmd
 
 
-def _get_passwd(profile):
+def _get_auth(profile):
     '''
-    retrieve profile password from profile config
+    retrieve password or ssh key from profile/provider
     '''
+    # TODO: get these from __opts__
     conf_dir = '/etc/salt'
     prof_dir = os.path.join(conf_dir, 'cloud.profiles.d')
     prov_dir = os.path.join(conf_dir, 'cloud.providers.d')
-    password = ''
-    prov_file_name = ''
 
     for prof_file_name in os.listdir(prof_dir):
         with open(os.path.join(prof_dir, prof_file_name)) as prof_file:
             prof_data = yaml.load(prof_file.read())
             if profile in prof_data:
                 password = prof_data[profile].get('password')
-                prov_file_name = prof_file_name
-    if not password and prov_file_name:
-        with open(os.path.join(prov_dir, prof_file_name)) as prov_file:
-            prov_data = yaml.load(prov_file.read())
-            for provider in prov_data:
-                password = prov_data[provider].get('password')
+                ssh_key_file = prof_data[profile].get('ssh_key_file')
+                provider = prof_data[profile].get('provider')
+
+    if not password and not ssh_key_file:
+        for prov_file_name in os.listdir(prov_dir):
+            with open(os.path.join(prov_dir, prov_file_name)) as prov_file:
+                prov_data = yaml.load(prov_file.read())
+                if provider in prov_data:
+                    password = prov_data[provider].get('password')
+                    ssh_key_file = prov_data[provider].get('ssh_key_file')
 
     if password:
-        return password
+        return {'passwd': password}
+    elif ssh_key_file:
+        return {'priv': ssh_key_file}
     else:
-        error = 'Failed to retrieve password for {0} from cloud profiles, {1}'.format(profile, prof_dir)
-        log.error(error)
-        raise CommandExecutionError(error)
+        return {}
 
 
-def _add_to_roster(name, host, user, passwd, roster):
+def _add_to_roster(roster, name, host, user, auth):
     '''
     add a cloud instance to the cluster roster
     '''
-    entry = textwrap.dedent('''\
-        {0}:
-          host: {1}
-          user: {2}
-          passwd: {3}'''.format(name, host, user, passwd))
+    entry = {name: {'host': host, 'user': user}}
+    entry[name].update(auth)
+
     __salt__['state.single']('file.touch', roster, makedirs=True)
     __salt__['file.blockreplace'](roster,
-             '##### begin {0}'.format(name),
-             '##### end {0}'.format(name),
-             entry,
-             append_if_not_found=True)
+                                  '##### begin {0}'.format(name),
+                                  '##### end {0}'.format(name),
+                                  yaml.dump(entry),
+                                  append_if_not_found=True)
 
 
-def _rem_from_roster(name, roster):
+def _rem_from_roster(roster, name):
     '''
     remove a cloud instance from the cluster roster
     '''
@@ -104,8 +105,9 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
 
         salt master-minion salt_cluster.create_node jmoney-master linode-centos-7 root /tmp/roster
     '''
-    passwd = _get_passwd(profile)
+    auth = _get_auth(profile)
     args = ['--no-deploy', '--profile', profile, name]
+    print(auth, args) ; return
 
     try:
         info = json.loads(__salt__['cmd.run_stdout'](_cmd(*args)))
@@ -115,7 +117,7 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
     if name in info:
         state = info[name].get('state')
         if state == 'Running' or state == 3:
-            _add_to_roster(name, info[name]['public_ips'][0], user, passwd, roster)
+            _add_to_roster(roster, name, info[name]['public_ips'][0], user, auth)
             return True
 
     error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, info)
@@ -139,7 +141,7 @@ def destroy_node(name, roster='/etc/salt/cluster/roster'):
         raise CommandExecutionError('Could not read json from salt-cloud: {0}'.format(value_error))
 
     if isinstance(info, dict) and name in str(info):
-        _rem_from_roster(name, roster)
+        _rem_from_roster(roster, name)
         return True
     else:
         error = 'Failed to remove node {0}: {1}'.format(name, info)
