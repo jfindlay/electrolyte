@@ -12,6 +12,7 @@ import logging
 import textwrap
 
 # Import salt libs
+import salt.utils
 from salt.exceptions import CommandExecutionError
 
 
@@ -31,37 +32,75 @@ def _cmd(*args):
     return cmd
 
 
-def _get_auth(profile):
+def _is_private_addr(ip_addr):
+    '''
+    test whether ip_addr is private according to RFC 1918
+    '''
+    ip = [int(quad) for quad in ip_addr.strip().split('.')]
+    if ip[0] == 10:
+        return True
+    elif ip[0] == 172 and ip[1] in [i for i in range(16, 32)]:
+        return True
+    elif ip[0] == 192 and ip[1] == 168:
+        return True
+
+
+def _interpret_driver_info(driver, info, name):
+    '''
+    interpret information returned from driver
+    '''
+    if name in info:
+        if driver == 'linode':
+                state = info[name].get('state')
+                if state == 'Running' or state == 3:
+                    for ip_addr in info[name]['public_ips']:
+                        if not _is_private_addr(ip_addr):
+                            return salt.utils.to_str(ip_addr)
+        elif driver == 'digital_ocean':
+                status = info[name].get('status')
+                if status == 'new':
+                    for net in info[name]['networks']['v4']:
+                        if not _is_private_addr(net['ip_address']):
+                            return salt.utils.to_str(net['ip_address'])
+
+
+def _get_driver_creds(profile):
     '''
     retrieve password or ssh key from profile/provider
     '''
+    def read_confs(cloud_dir, section):
+        '''
+        read through cloud config files
+        '''
+        for file_name in os.listdir(cloud_dir):
+            with open(os.path.join(cloud_dir, file_name)) as file_:
+                try:
+                    data = yaml.load(file_.read())
+                except yaml.reader.ReaderError:
+                    continue
+
+                if section in data:
+                    return {'driver': data[section].get('driver'),
+                            'provider': data[section].get('provider'),
+                            'password': data[section].get('password'),
+                            'ssh_key_file': data[section].get('ssh_key_file')}
+
     # TODO: get these from __opts__
     conf_dir = '/etc/salt'
     prof_dir = os.path.join(conf_dir, 'cloud.profiles.d')
     prov_dir = os.path.join(conf_dir, 'cloud.providers.d')
 
-    for prof_file_name in os.listdir(prof_dir):
-        with open(os.path.join(prof_dir, prof_file_name)) as prof_file:
-            prof_data = yaml.load(prof_file.read())
-            if profile in prof_data:
-                password = prof_data[profile].get('password')
-                ssh_key_file = prof_data[profile].get('ssh_key_file')
-                provider = prof_data[profile].get('provider')
+    prof_data = read_confs(prof_dir, profile)
+    prov_data = read_confs(prov_dir, prof_data['provider'])
 
-    if not password and not ssh_key_file:
-        for prov_file_name in os.listdir(prov_dir):
-            with open(os.path.join(prov_dir, prov_file_name)) as prov_file:
-                prov_data = yaml.load(prov_file.read())
-                if provider in prov_data:
-                    password = prov_data[provider].get('password')
-                    ssh_key_file = prov_data[provider].get('ssh_key_file')
-
-    if password:
-        return {'passwd': password}
-    elif ssh_key_file:
-        return {'priv': ssh_key_file}
-    else:
-        return {}
+    ret = {}
+    for item in ('password', 'ssh_key_file'):
+        if prof_data[item]:
+            ret[item] = prof_data[item]
+        elif prov_data[item]:
+            ret[item] = prov_data[item]
+    ret['driver'] = prov_data['driver'] if prov_data['driver'] else prov_data['provider']
+    return ret
 
 
 def _add_to_roster(roster, name, host, user, auth):
@@ -105,20 +144,31 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
 
         salt master-minion salt_cluster.create_node jmoney-master linode-centos-7 root /tmp/roster
     '''
-    auth = _get_auth(profile)
+    creds = _get_driver_creds(profile)
+
+    if 'driver' in creds:
+        driver = creds['driver']
+    else:
+        raise CommandExecutionError('Could not find cloud driver info for {0}'.format(profile))
+
+    if 'password' in creds:
+        auth = {'passwd': creds['password']}
+    elif 'ssh_key_file' in creds:
+        auth = {'priv': creds['ssh_key_file']}
+    else:
+        raise CommandExecutionError('Could not find login auth info for {0}'.format(profile))
+
     args = ['--no-deploy', '--profile', profile, name]
-    print(auth, args) ; return
 
     try:
         info = json.loads(__salt__['cmd.run_stdout'](_cmd(*args)))
     except ValueError as value_error:
         raise CommandExecutionError('Could not read json from salt-cloud: {0}'.format(value_error))
 
-    if name in info:
-        state = info[name].get('state')
-        if state == 'Running' or state == 3:
-            _add_to_roster(roster, name, info[name]['public_ips'][0], user, auth)
-            return True
+    ip_addr = _interpret_driver_info(driver, info, name)
+    if ip_addr:
+        _add_to_roster(roster, name, ip_addr, user, auth)
+        return True
 
     error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, info)
     log.error(error)
