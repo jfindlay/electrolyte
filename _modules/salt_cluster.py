@@ -49,19 +49,20 @@ def _interpret_driver_info(driver, info, name):
     '''
     interpret information returned from driver
     '''
-    if name in info:
-        if driver == 'linode':
-                state = info[name].get('state')
-                if state == 'Running' or state == 3:
-                    for ip_addr in info[name]['public_ips']:
-                        if not _is_private_addr(ip_addr):
-                            return salt.utils.to_str(ip_addr)
-        elif driver == 'digital_ocean':
-                status = info[name].get('status')
-                if status == 'new':
-                    for net in info[name]['networks']['v4']:
-                        if not _is_private_addr(net['ip_address']):
-                            return salt.utils.to_str(net['ip_address'])
+    if not name in info:
+        return
+
+    if driver == 'linode':
+        state = info[name].get('state')
+        if state == 'Running' or state == 3:
+            for ip_addr in info[name]['public_ips']:
+                if not _is_private_addr(ip_addr):
+                    return salt.utils.to_str(ip_addr)
+    elif driver == 'digital_ocean':
+        if info[name].get('status') == 'new':
+            for net in info[name]['networks']['v4']:
+                if not _is_private_addr(net['ip_address']):
+                    return salt.utils.to_str(net['ip_address'])
 
 
 def _get_driver_creds(profile):
@@ -186,10 +187,11 @@ def destroy_node(name, roster='/etc/salt/cluster/roster'):
     '''
     args = ['--destroy', name]
 
+    res = __salt__['cmd.run_stdout'](_cmd(*args))
     try:
-        info = json.loads(__salt__['cmd.run_stdout'](_cmd(*args)))
+        info = json.loads(res)
     except ValueError as value_error:
-        raise CommandExecutionError('Could not read json from salt-cloud: {0}'.format(value_error))
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res))
 
     if isinstance(info, dict) and name in str(info):
         _rem_from_roster(roster, name)
