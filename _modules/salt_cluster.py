@@ -161,11 +161,11 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
 
     args = ['--no-deploy', '--profile', profile, name]
 
-    res = __salt__['cmd.run_stdout'](_cmd(*args))
+    res = __salt__['cmd.run_all'](_cmd(*args))
     try:
-        info = json.loads(res)
+        info = json.loads(res['stdout'])
     except ValueError as value_error:
-        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res))
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res['stderr']))
 
     ip_addr = _interpret_driver_info(driver, info, name)
     if ip_addr:
@@ -187,11 +187,11 @@ def destroy_node(name, roster='/etc/salt/cluster/roster'):
     '''
     args = ['--destroy', name]
 
-    res = __salt__['cmd.run_stdout'](_cmd(*args))
+    res = __salt__['cmd.run'](_cmd(*args))
     try:
-        info = json.loads(res)
+        info = json.loads(res['stdout'])
     except ValueError as value_error:
-        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res))
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res['stderr']))
 
     if isinstance(info, dict) and name in str(info):
         _rem_from_roster(roster, name)
