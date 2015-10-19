@@ -137,7 +137,7 @@ def _rem_from_roster(roster, name):
                              '')
 
 
-def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
+def create_node(name, profile, user='root', roster='/etc/salt/roster'):
     '''
     Create a cloud instance using salt-cloud and add it to the cluster roster
 
@@ -177,7 +177,7 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
     return (False, error)
 
 
-def destroy_node(name, roster='/etc/salt/cluster/roster'):
+def destroy_node(name, roster='/etc/salt/roster'):
     '''
     Destroy a cloud instance using salt-cloud and remove it from the cluster roster
 
