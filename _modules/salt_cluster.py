@@ -164,15 +164,15 @@ def create_node(name, profile, user='root', roster='/etc/salt/cluster/roster'):
     res = __salt__['cmd.run_all'](_cmd(*args))
     try:
         info = json.loads(res['stdout'])
-    except ValueError as value_error:
-        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res['stderr']))
+    except (TypeError, ValueError) as error:
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(error, res['stderr']))
 
     ip_addr = _interpret_driver_info(driver, info, name)
     if ip_addr:
         _add_to_roster(roster, name, ip_addr, user, auth)
         return True
 
-    error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, info)
+    error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, res['stderr'])
     log.error(error)
     return (False, error)
 
@@ -187,16 +187,16 @@ def destroy_node(name, roster='/etc/salt/cluster/roster'):
     '''
     args = ['--destroy', name]
 
-    res = __salt__['cmd.run'](_cmd(*args))
+    res = __salt__['cmd.run_all'](_cmd(*args))
     try:
         info = json.loads(res['stdout'])
-    except ValueError as value_error:
-        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(value_error, res['stderr']))
+    except (TypeError, ValueError) as error:
+        raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(error, res['stdout']))
 
     if isinstance(info, dict) and name in str(info):
         _rem_from_roster(roster, name)
         return True
     else:
-        error = 'Failed to remove node {0}: {1}'.format(name, info)
+        error = 'Failed to remove node {0}: {1}'.format(name, res['stderr'])
         log.error(error)
         return (False, error)
