@@ -45,9 +45,9 @@ def _is_private_addr(ip_addr):
         return True
 
 
-def _interpret_driver_info(driver, info, name):
+def _get_ip_addr(driver, info, name):
     '''
-    interpret information returned from driver
+    retrieve IP address from info returned from driver
     '''
     if not name in info:
         return
@@ -63,6 +63,8 @@ def _interpret_driver_info(driver, info, name):
             for net in info[name]['networks']['v4']:
                 if not _is_private_addr(net['ip_address']):
                     return salt.utils.to_str(net['ip_address'])
+    elif driver == 'ec2':
+        return salt.utils.to_str(info[name]['ipAddress'])
 
 
 def _get_driver_creds(profile):
@@ -83,8 +85,10 @@ def _get_driver_creds(profile):
                 if section in data:
                     return {'driver': data[section].get('driver'),
                             'provider': data[section].get('provider'),
+                            'ssh_username': data[section].get('ssh_username'),
                             'password': data[section].get('password'),
-                            'ssh_key_file': data[section].get('ssh_key_file')}
+                            'ssh_key_file': data[section].get('ssh_key_file'),
+                            'private_key': data[section].get('private_key')}
 
     # TODO: get these from __opts__
     conf_dir = '/etc/salt'
@@ -95,7 +99,7 @@ def _get_driver_creds(profile):
     prov_data = read_confs(prov_dir, prof_data['provider'])
 
     ret = {}
-    for item in ('password', 'ssh_key_file'):
+    for item in ('ssh_username', 'password', 'ssh_key_file', 'private_key'):
         if prof_data[item]:
             ret[item] = prof_data[item]
         elif prov_data[item]:
@@ -152,22 +156,36 @@ def create_node(name, profile, user='root', roster='/etc/salt/roster'):
     else:
         raise CommandExecutionError('Could not find cloud driver info for {0}'.format(profile))
 
+    if 'ssh_username' in creds:
+        user = creds['ssh_username']
+
     if 'password' in creds:
         auth = {'passwd': creds['password']}
     elif 'ssh_key_file' in creds:
         auth = {'priv': creds['ssh_key_file']}
+    elif 'private_key' in creds:
+        auth = {'priv': creds['private_key']}
     else:
         raise CommandExecutionError('Could not find login auth info for {0}'.format(profile))
 
     args = ['--no-deploy', '--profile', profile, name]
-
     res = __salt__['cmd.run_all'](_cmd(*args))
+
+    # assume that the cloud response is a json object or list and strip any
+    # non-json messages
+    stdout = res['stdout'].splitlines()
+    for index, line in enumerate(stdout):
+        line = line.strip()
+        if line.startswith('[') or line.startswith('{'):
+            break
+    res['stdout'] = '\n'.join(stdout[index:])
+
     try:
         info = json.loads(res['stdout'])
     except (TypeError, ValueError) as error:
         raise CommandExecutionError('Could not read json from salt-cloud: {0}: {1}'.format(error, res['stderr']))
 
-    ip_addr = _interpret_driver_info(driver, info, name)
+    ip_addr = _get_ip_addr(driver, info, name)
     if ip_addr:
         _add_to_roster(roster, name, ip_addr, user, auth)
         return True
@@ -188,6 +206,18 @@ def destroy_node(name, roster='/etc/salt/roster'):
     args = ['--destroy', name]
 
     res = __salt__['cmd.run_all'](_cmd(*args))
+
+    # assume that the cloud response is a json object or list and strip any
+    # non-json messages
+    stdout = res['stdout'].splitlines()
+    index = 0
+    for index, line in enumerate(stdout):
+        line = line.strip()
+        if line.startswith('[') or line.startswith('{'):
+            break
+    ret += '\n'.join(stdout[:index])  # return message to user
+    res['stdout'] = '\n'.join(stdout[index:])
+
     try:
         info = json.loads(res['stdout'])
     except (TypeError, ValueError) as error:
