@@ -108,12 +108,14 @@ def _get_driver_creds(profile):
     return ret
 
 
-def _add_to_roster(roster, name, host, user, auth):
+def _add_to_roster(roster, name, host, user, auth, sudo):
     '''
     add a cloud instance to the cluster roster
     '''
     entry = {name: {'host': host, 'user': user}}
     entry[name].update(auth)
+    if user != 'root' and sudo:
+        entry[name].update({'sudo': True, 'tty': True})
 
     __salt__['state.single']('file.touch', roster, makedirs=True)
     __salt__['file.blockreplace'](roster,
@@ -141,7 +143,7 @@ def _rem_from_roster(roster, name):
                              '')
 
 
-def create_node(name, profile, user='root', roster='/etc/salt/roster'):
+def create_node(name, profile, user='root', roster='/etc/salt/roster', sudo=True):
     '''
     Create a cloud instance using salt-cloud and add it to the cluster roster
 
@@ -191,7 +193,7 @@ def create_node(name, profile, user='root', roster='/etc/salt/roster'):
 
     ip_addr = _get_ip_addr(driver, info, name)
     if ip_addr:
-        _add_to_roster(roster, name, ip_addr, user, auth)
+        _add_to_roster(roster, name, ip_addr, user, auth, sudo)
         msg = 'Created node {0} from profile {1}'.format(name, profile)
         return '\n'.join([ret, msg])
 
