@@ -168,16 +168,20 @@ def create_node(name, profile, user='root', roster='/etc/salt/roster'):
     else:
         raise CommandExecutionError('Could not find login auth info for {0}'.format(profile))
 
+    ret = ''
+
     args = ['--no-deploy', '--profile', profile, name]
     res = __salt__['cmd.run_all'](_cmd(*args))
 
     # assume that the cloud response is a json object or list and strip any
     # non-json messages
     stdout = res['stdout'].splitlines()
+    index = 0
     for index, line in enumerate(stdout):
         line = line.strip()
         if line.startswith('[') or line.startswith('{'):
             break
+    ret += '\n'.join(stdout[:index])  # return message to user
     res['stdout'] = '\n'.join(stdout[index:])
 
     try:
@@ -188,7 +192,8 @@ def create_node(name, profile, user='root', roster='/etc/salt/roster'):
     ip_addr = _get_ip_addr(driver, info, name)
     if ip_addr:
         _add_to_roster(roster, name, ip_addr, user, auth)
-        return True
+        msg = 'Created node {0} from profile {1}'.format(name, profile)
+        return '\n'.join([ret, msg])
 
     error = 'Failed to create node {0} from profile {1}: {2}'.format(name, profile, res['stderr'])
     log.error(error)
@@ -203,8 +208,9 @@ def destroy_node(name, roster='/etc/salt/roster'):
 
         salt master-minion salt_cluster.destroy_node jmoney-master
     '''
-    args = ['--destroy', name]
+    ret = ''
 
+    args = ['--destroy', name]
     res = __salt__['cmd.run_all'](_cmd(*args))
 
     # assume that the cloud response is a json object or list and strip any
@@ -225,7 +231,8 @@ def destroy_node(name, roster='/etc/salt/roster'):
 
     if isinstance(info, dict) and name in str(info):
         _rem_from_roster(roster, name)
-        return True
+        msg = 'Destroyed node {0}'.format(name)
+        return '\n'.join([ret, msg])
     else:
         error = 'Failed to remove node {0}: {1}'.format(name, res['stderr'])
         log.error(error)

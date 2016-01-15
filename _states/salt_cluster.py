@@ -33,6 +33,9 @@ Destroy two nodes:
 from salt.exceptions import SaltInvocationError
 
 
+# Import 3rd party libs
+from salt.ext import six
+
 __outputter__ = {
     'present': 'highstate',
     'absent': 'highstate',
@@ -59,7 +62,7 @@ def node_present(name, profile):
 
     info = __salt__['salt_cluster.create_node'](name, profile)
 
-    if info is True:
+    if isinstance(info, six.string_types):
         ret['changes'] = {'node': name}
         ret['result'] = True
         ret['comment'] = 'Cluster node {0} created from cloud profile {1}'.format(name, profile)
@@ -90,7 +93,7 @@ def node_absent(name):
 
     info = __salt__['salt_cluster.destroy_node'](name)
 
-    if info is True:
+    if isinstance(info, six.string_types):
         ret['changes'] = {'node': name}
         ret['result'] = True
         ret['comment'] = 'Cluster node {0} destroyed'.format(name)
