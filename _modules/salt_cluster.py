@@ -90,15 +90,20 @@ def _get_driver_creds(profile):
                             'ssh_key_file': data[section].get('ssh_key_file'),
                             'private_key': data[section].get('private_key')}
 
+        return {}
+
     # TODO: get these from __opts__
     conf_dir = '/etc/salt'
     prof_dir = os.path.join(conf_dir, 'cloud.profiles.d')
     prov_dir = os.path.join(conf_dir, 'cloud.providers.d')
 
     prof_data = read_confs(prof_dir, profile)
-    prov_data = read_confs(prov_dir, prof_data['provider'])
+    prov_data = read_confs(prov_dir, prof_data.get('provider', ''))
 
     ret = {}
+    if not prof_data or not prov_data:
+        return ret  # couldn't find profile or provider data
+
     for item in ('ssh_username', 'password', 'ssh_key_file', 'private_key'):
         if prof_data[item]:
             ret[item] = prof_data[item]
@@ -152,6 +157,9 @@ def create_node(name, profile, user='root', roster='/etc/salt/roster', sudo=True
         salt master-minion salt_cluster.create_node jmoney-master linode-centos-7 root /tmp/roster
     '''
     creds = _get_driver_creds(profile)
+
+    if not creds:
+        raise CommandExecutionError('Could not find profile or provider data for {0}'.format(profile))
 
     if 'driver' in creds:
         driver = creds['driver']
