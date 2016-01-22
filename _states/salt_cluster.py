@@ -60,7 +60,10 @@ def node_present(name, profile):
         ret['comment'] = 'Cluster node {0} is set to be created'.format(name)
         return ret
 
-    info = __salt__['salt_cluster.create_node'](name, profile)
+    try:
+        info = __salt__['salt_cluster.create_node'](name, profile)
+    except CommandExecutionError as err:
+        info = (False, err)
 
     if isinstance(info, six.string_types):
         ret['changes'] = {'node': name}
@@ -91,7 +94,10 @@ def node_absent(name):
         ret['comment'] = 'Cluster node {0} is set to be destroyed'.format(name)
         return ret
 
-    info = __salt__['salt_cluster.destroy_node'](name)
+    try:
+        info = __salt__['salt_cluster.destroy_node'](name)
+    except CommandExecutionError as err:
+        info = (False, err)
 
     if isinstance(info, six.string_types):
         ret['changes'] = {'node': name}
