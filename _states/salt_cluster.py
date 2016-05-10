@@ -30,7 +30,7 @@ Destroy two nodes:
 '''
 
 # Import salt libs
-from salt.exceptions import SaltInvocationError
+from salt.exceptions import CommandExecutionError
 
 
 # Import 3rd party libs
