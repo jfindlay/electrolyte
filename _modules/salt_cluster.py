@@ -67,7 +67,8 @@ def _get_ip_addr(driver, info, name):
         return salt.utils.to_str(info[name]['ipAddress'])
     elif driver == 'openstack':
         for ip_addr in info[name]['public_ips']:
-            return salt.utils.to_str(ip_addr)  # either v4 or v6
+            if salt.utils.network.is_ipv4(ip_addr):
+                return salt.utils.to_str(ip_addr)
 
 
 def _get_driver_creds(profile):
