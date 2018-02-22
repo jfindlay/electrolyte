@@ -69,6 +69,8 @@ def _get_ip_addr(driver, info, name):
         for ip_addr in info[name]['public_ips']:
             if salt.utils.network.is_ipv4(ip_addr):
                 return salt.utils.to_str(ip_addr)
+    elif driver == 'joyent':
+        return salt.utils.to_str(info[name]['primaryIp'])
 
 
 def _get_driver_creds(profile):
